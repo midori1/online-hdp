@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# coding=utf-8
 # the hdp class in python
 # implements the truncated hdp model
 # by chongw@cs.princeton.edu
@@ -171,16 +173,16 @@ class hdp:
         self.m_T = T
         self.m_K = K  # for now, we assume all the same for the second level truncation
         self.m_size_vocab = size_vocab
-
+        #  ???
         self.m_beta = np.random.gamma(1.0, 1.0, (T, size_vocab)) * D * 100 / (T * size_vocab)
         self.m_eta = eta
-
+        #  默认情况下这些都是a,b都是1
         self.m_alpha = hdp_hyperparam.m_alpha_a / hdp_hyperparam.m_alpha_b
         self.m_gamma = hdp_hyperparam.m_gamma_a / hdp_hyperparam.m_gamma_b
         self.m_var_sticks = np.zeros((2, T - 1))
         self.m_var_sticks[0] = 1.0
         self.m_var_sticks[1] = self.m_gamma
-
+        # ???
         # variational posterior parameters for hdp
         self.m_var_gamma_a = hdp_hyperparam.m_gamma_a
         self.m_var_gamma_b = hdp_hyperparam.m_gamma_b

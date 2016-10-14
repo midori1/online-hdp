@@ -1,3 +1,4 @@
+# coding=utf-8
 import sys, os
 from corpus import *
 import hdp
@@ -61,7 +62,7 @@ def run_hdp():
     random.seed(options.random_seed)
     # Read the training data.
     c_train_filename = options.data_path
-
+    # c_test保存测试数据，此时是读取测试数据
     test_data_path = options.test_data_path
     c_test = read_data(test_data_path)
     c_test_word_count = sum([doc.total for doc in c_test.docs])
