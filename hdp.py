@@ -32,7 +32,7 @@ def expect_log_sticks(sticks):
     n = len(sticks[0]) + 1
     Elogsticks = np.zeros(n)
     Elogsticks[0:n - 1] = ElogW
-    Elogsticks[1:] = Elogsticks[1:] + np.cumsum(Elog1_W)
+    Elogsticks[1:] = Elogsticks[1:] + np.cumsum(Elog1_W)  # 累加和
     return Elogsticks
 
 
@@ -314,7 +314,7 @@ class hdp:
 
         # prepare all needs for a single doc
         Elogbeta = dirichlet_expectation(self.m_beta)  # the topics
-        Elogsticks_1st = expect_log_sticks(self.m_var_sticks)  # global sticks
+        Elogsticks_1st = expect_log_sticks(self.m_var_sticks)  # global sticks Eq[log_beta_k]
         likelihood = 0.0
         for line in file(filename):
             doc = parse_line(line)
