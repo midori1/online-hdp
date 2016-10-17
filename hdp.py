@@ -23,7 +23,7 @@ def dirichlet_expectation(alpha):
         return sp.psi(alpha) - sp.psi(np.sum(alpha))
     return sp.psi(alpha) - sp.psi(np.sum(alpha, 1))[:, np.newaxis]
 
-
+# 计算Eq[log_beta]和Eq[log_pi]
 def expect_log_sticks(sticks):
     dig_sum = sp.psi(np.sum(sticks, 0))
     ElogW = sp.psi(sticks[0]) - dig_sum
@@ -170,22 +170,24 @@ class hdp:
 
         self.m_hdp_hyperparam = hdp_hyperparam
 
+        #  KT与论文相反！！！
+
         self.m_T = T
         self.m_K = K  # for now, we assume all the same for the second level truncation
         self.m_size_vocab = size_vocab
         #  ???
-        self.m_beta = np.random.gamma(1.0, 1.0, (T, size_vocab)) * D * 100 / (T * size_vocab)
+        self.m_beta = np.random.gamma(1.0, 1.0, (T, size_vocab)) * D * 100 / (T * size_vocab)  # 好像是lambda
         self.m_eta = eta
         #  默认情况下这些都是a,b都是1
         self.m_alpha = hdp_hyperparam.m_alpha_a / hdp_hyperparam.m_alpha_b
         self.m_gamma = hdp_hyperparam.m_gamma_a / hdp_hyperparam.m_gamma_b
-        self.m_var_sticks = np.zeros((2, T - 1))
+        self.m_var_sticks = np.zeros((2, T - 1))  # 后验全局棍子，因为有两个变分参数，所以是两维
         self.m_var_sticks[0] = 1.0
         self.m_var_sticks[1] = self.m_gamma
         # ???
         # variational posterior parameters for hdp
-        self.m_var_gamma_a = hdp_hyperparam.m_gamma_a
-        self.m_var_gamma_b = hdp_hyperparam.m_gamma_b
+        self.m_var_gamma_a = hdp_hyperparam.m_gamma_a  # 后验变分参数
+        self.m_var_gamma_b = hdp_hyperparam.m_gamma_b  # 后验变分参数
 
     def save_topics(self, filename):
         f = file(filename, "w")
@@ -196,13 +198,13 @@ class hdp:
 
     def doc_e_step(self, doc, ss, Elogbeta, Elogsticks_1st, var_converge, fresh=False):
 
-        Elogbeta_doc = Elogbeta[:, doc.words]
-        v = np.zeros((2, self.m_K - 1))
+        Elogbeta_doc = Elogbeta[:, doc.words]  # T x doc.length fancy索引，将这个文档里面的词的对应的参数取出
+        v = np.zeros((2, self.m_K - 1))  # 2 x K-1维 0
 
-        phi = np.ones((doc.length, self.m_K)) * 1.0 / self.m_K
+        phi = np.ones((doc.length, self.m_K)) * 1.0 / self.m_K  # doc.length x K 归一化
 
         # the following line is of no use
-        Elogsticks_2nd = expect_log_sticks(v)
+        Elogsticks_2nd = expect_log_sticks(v)  # 计算Eq[log_pi_jt], K维
 
         likelihood = 0.0
         old_likelihood = -1e1000
@@ -214,9 +216,9 @@ class hdp:
         # (TODO): support second level optimization in the future
         while iter < max_iter and (converge < 0.0 or converge > var_converge):
             ### update variational parameters
-            # var_phi 
+            # var_phi,其实是公式里面的phi
             if iter < 3 and fresh:
-                var_phi = np.dot(phi.T, (Elogbeta_doc * doc.counts).T)
+                var_phi = np.dot(phi.T, (Elogbeta_doc * doc.counts).T)  # 乘完之后是K x T维矩阵
                 (log_var_phi, log_norm) = utils.log_normalize(var_phi)
                 var_phi = np.exp(log_var_phi)
             else:
@@ -224,9 +226,9 @@ class hdp:
                 (log_var_phi, log_norm) = utils.log_normalize(var_phi)
                 var_phi = np.exp(log_var_phi)
 
-                # phi
+                # phi 公式里面的zeta
             if iter < 3:
-                phi = np.dot(var_phi, Elogbeta_doc).T
+                phi = np.dot(var_phi, Elogbeta_doc).T  # 乘完之后是doc.length x K维矩阵 KT与论文相反
                 (log_phi, log_norm) = utils.log_normalize(phi)
                 phi = np.exp(log_phi)
             else:
@@ -236,24 +238,29 @@ class hdp:
 
             # v
             phi_all = phi * np.array(doc.counts)[:, np.newaxis]
-            v[0] = 1.0 + np.sum(phi_all[:, :self.m_K - 1], 0)
+            v[0] = 1.0 + np.sum(phi_all[:, :self.m_K - 1], 0)  # 更新变分参数a_jt
             phi_cum = np.flipud(np.sum(phi_all[:, 1:], 0))
-            v[1] = self.m_alpha + np.flipud(np.cumsum(phi_cum))
-            Elogsticks_2nd = expect_log_sticks(v)
+            v[1] = self.m_alpha + np.flipud(np.cumsum(phi_cum))  # 更新变分参数b_jt
+            Elogsticks_2nd = expect_log_sticks(v)  # K维
 
             likelihood = 0.0
             # compute likelihood
             # var_phi part/ C in john's notation
-            likelihood += np.sum((Elogsticks_1st - log_var_phi) * var_phi)
+            # 似然的展开式的第二项和第五项相加
+            likelihood += np.sum((Elogsticks_1st - log_var_phi) * var_phi)  # 这里 1 x T维减去 K x T维，结果是把第一个补全为K x T维之后相减
 
             # v part/ v in john's notation, john's beta is alpha here
             log_alpha = np.log(self.m_alpha)
+            # 第四项中的B函数展开是(self.m_K - 1) * log_alpha
             likelihood += (self.m_K - 1) * log_alpha
             dig_sum = sp.psi(np.sum(v, 0))
+            # 第四项和第七项中的log_pi_jt和log_1-pi_jt合并
             likelihood += np.sum((np.array([1.0, self.m_alpha])[:, np.newaxis] - v) * (sp.psi(v) - dig_sum))
+            # 第七项中的B函数展开
             likelihood -= np.sum(sp.gammaln(np.sum(v, 0))) - np.sum(sp.gammaln(v))
 
-            # Z part 
+            # Z part
+            # 似然的展开式的第三项和第六项相加
             likelihood += np.sum((Elogsticks_2nd - log_phi) * phi)
 
             # X part, the data part
@@ -267,8 +274,9 @@ class hdp:
 
             iter += 1
 
-        # update the suff_stat ss 
-        ss.m_var_sticks_ss += np.sum(var_phi, 0)
+        # update the suff_stat ss
+        # 这里为m步的更新uk,vk和lambda_kw作准备
+        ss.m_var_sticks_ss += np.sum(var_phi, 0)  # 加完最后是sigma(j,sigma(t, var_phi))
         ss.m_var_beta_ss[:, doc.words] += np.dot(var_phi.T, phi.T * doc.counts)
 
         return (likelihood)
@@ -276,7 +284,7 @@ class hdp:
     def optimal_ordering(self, ss):
         s = [(a, b) for (a, b) in izip(ss.m_var_sticks_ss, range(self.m_T))]
         x = sorted(s, key=lambda y: y[0], reverse=True)
-        idx = [y[1] for y in x]
+        idx = [y[1] for y in x]  # 根据ss.m_var_sticks_ss的值排序后的索引数组（倒序）
         ss.m_var_sticks_ss[:] = ss.m_var_sticks_ss[idx]
         ss.m_var_beta_ss[:] = ss.m_var_beta_ss[idx, :]
 
@@ -313,11 +321,11 @@ class hdp:
         ss.set_zero()
 
         # prepare all needs for a single doc
-        Elogbeta = dirichlet_expectation(self.m_beta)  # the topics
+        Elogbeta = dirichlet_expectation(self.m_beta)  # the topics Eq[log(P(w_jn=w|phi_k))]
         Elogsticks_1st = expect_log_sticks(self.m_var_sticks)  # global sticks Eq[log_beta_k]
         likelihood = 0.0
         for line in file(filename):
-            doc = parse_line(line)
+            doc = parse_line(line) # 读取这个训练文件的每一行，作为一个文档
             likelihood += self.doc_e_step(doc, ss, Elogbeta, Elogsticks_1st, var_converge, fresh=fresh)
 
         # collect the likelihood from other parts
@@ -336,13 +344,17 @@ class hdp:
             log_gamma = np.log(self.m_gamma)
 
             # the W/sticks part
+        # 第八项的B函数展开
         likelihood += (self.m_T - 1) * log_gamma
         dig_sum = sp.psi(np.sum(self.m_var_sticks, 0))
+        # 第八项和第九项的log_beta_k和log_1-beta_k合并
         likelihood += np.sum(
             (np.array([1.0, self.m_gamma])[:, np.newaxis] - self.m_var_sticks) * (sp.psi(self.m_var_sticks) - dig_sum))
+        # 第九项B函数展开
         likelihood -= np.sum(sp.gammaln(np.sum(self.m_var_sticks, 0))) - np.sum(sp.gammaln(self.m_var_sticks))
 
-        # the beta part    
+        # the beta part
+        # 第八项，第十项
         likelihood += np.sum((self.m_eta - self.m_beta) * Elogbeta)
         likelihood += np.sum(sp.gammaln(self.m_beta) - sp.gammaln(self.m_eta))
         likelihood += np.sum(sp.gammaln(self.m_eta * self.m_size_vocab) - sp.gammaln(np.sum(self.m_beta, 1)))
